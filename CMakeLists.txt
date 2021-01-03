@@ -31,6 +31,6 @@ target_link_libraries(${EXECUTABLE_NAME} pulse-simple)
 
 # pthread
 find_package(Threads)
-target_link_libraries (${EXECUTABLE_NAME} ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(${EXECUTABLE_NAME} ${CMAKE_THREAD_LIBS_INIT})
 
 install(TARGETS ${EXECUTABLE_NAME} DESTINATION bin)

@@ -1,21 +1,18 @@
-#include <iostream>
+#include <fstream>
 #include <fftw3.h>
-#include <pthread.h>
 #include <math.h>
-#include <time.h>
 #include <SFML/Graphics.hpp>
 #include <X11/Xlib.h>
-#include <X11/Xatom.h>
-#include <X11/keysym.h>
-#include <X11/Xutil.h>
 #include "util.cpp"
 #include "input/pulse.h"
 #include "input/pulse.cpp"
 
-float fps = 60;
-int MAX_HEIGHT = 256;
-int WINDOW_WIDTH = 1024;
-float bars[42];
+float fps = 50;
+int maxHeight = 256;
+int windowWidth = 1280;
+float bars[50];
+std::string brp = "/sys/devices/platform/dell-laptop/leds/dell::kbd_backlight/brightness";
+std::string brm = "/sys/devices/platform/dell-laptop/leds/dell::kbd_backlight/max_brightness";
 
 Window TransparentWindow () {
   Display* display = XOpenDisplay(NULL);
@@ -33,10 +30,10 @@ Window TransparentWindow () {
   attr.override_redirect = true;
   wnd = XCreateWindow(
     display, DefaultRootWindow(display),
-    (sf::VideoMode::getDesktopMode().width / 2) - (WINDOW_WIDTH / 2),
-    sf::VideoMode::getDesktopMode().height - (MAX_HEIGHT * 2),
-    WINDOW_WIDTH,
-    MAX_HEIGHT * 2,
+    (sf::VideoMode::getDesktopMode().width / 2) - (windowWidth / 2),
+    sf::VideoMode::getDesktopMode().height - (maxHeight * 2),
+    windowWidth,
+    maxHeight * 2,
     0,
     visualinfo.depth,
     InputOutput,
@@ -49,10 +46,10 @@ Window TransparentWindow () {
 
   XSizeHints sizehints;
   sizehints.flags = PPosition | PSize;
-  sizehints.x = (sf::VideoMode::getDesktopMode().width / 2) - (WINDOW_WIDTH / 2);
-  sizehints.y = sf::VideoMode::getDesktopMode().height - (MAX_HEIGHT * 2);
-  sizehints.width = WINDOW_WIDTH;
-  sizehints.height = MAX_HEIGHT * 2;
+  sizehints.x = (sf::VideoMode::getDesktopMode().width / 2) - (windowWidth / 2);
+  sizehints.y = sf::VideoMode::getDesktopMode().height - (maxHeight * 2);
+  sizehints.width = windowWidth;
+  sizehints.height = maxHeight * 2;
   XSetWMNormalHints(display, wnd, &sizehints);
 
   XSetWMProtocols(display, wnd, NULL, 0);
@@ -70,19 +67,19 @@ Window TransparentWindow () {
 
 void draw(sf::RenderWindow* window) {
   int i;
-  
+
   sf::Vector2u s = window->getSize();
   window->clear(sf::Color::Transparent);
-  
-  for (i = 0; i < 42; i++) {
+
+  for (i = 0; i < 50; i++) {
     float bar = bars[i];
-    float width = (float)s.x / (float)42;
-    float height = bar * MAX_HEIGHT;
+    float width = (float)s.x / (float)50;
+    float height = bar * maxHeight;
     float posY = (s.y / 2) - (height / 2);
 
     sf::RectangleShape rect(sf::Vector2f(width, height));
     rect.setPosition(sf::Vector2f(width * i, posY));
-    rect.setFillColor(sf::Color(0, 255, 255, 255 * bar));
+    rect.setFillColor(sf::Color(0, 160, 160, 255 * bar));
 
     window->draw(rect);
   }
@@ -94,51 +91,70 @@ void draw(sf::RenderWindow* window) {
 int main () {
   Window win = TransparentWindow();
   sf::RenderWindow window(win);
-  window.setFramerateLimit(60);
-  
+  window.setFramerateLimit(fps);
+
   sf::Clock clock;
   pthread_t p_thread;
-  int i, thr_id, silence, sleep;
+  int i, thr_id, silence, sleep, highest, kbmax;
   struct timespec req = { .tv_sec = 0, .tv_nsec = 0 };
   struct audio_data audio;
   double in[2050];
   fftw_complex out[1025][2];
   fftw_plan p = fftw_plan_dft_r2c_1d(2048, in, *out, FFTW_MEASURE);
   int *freq;
-  
+  std::ifstream maxBrightness;
+  FILE *f;
+
   // Initialization
-  for (i = 0; i < 42; i++) {
-		bars[i] = 0;
-	}
+  for (i = 0; i < 50; i++) {
+    bars[i] = 0;
+  }
 
   audio.source = (char*)"auto";
   audio.format = -1;
   audio.terminate = 0;
   for (i = 0; i < 2048; i++) {
-		audio.audio_out[i] = 0;
-	}
+    audio.audio_out[i] = 0;
+  }
   getPulseDefaultSink((void*)&audio);
-	thr_id = pthread_create(&p_thread, NULL, input_pulse, (void*)&audio); 
-	audio.rate = 44100;
+  thr_id = pthread_create(&p_thread, NULL, input_pulse, (void*)&audio);
+  audio.rate = 44100;
+
+  // get maximum brightness available
+  maxBrightness.open(brm);
+  if (maxBrightness.is_open()) {
+    std::string t;
+    getline(maxBrightness, t);
+    kbmax = std::stoi(t);
+    maxBrightness.close();
+  }
+
+  // this is where we send the brightness
+  if (kbmax > 0) {
+    f = fopen(brp.c_str(), "w");
+    setbuf(f, NULL);
+  }
 
   // Main Loop
   while (window.isOpen()) {
     // Handle Events
     sf::Event event;
     while (window.pollEvent(event)) {
-      if (event.type == sf::Event::Closed)
-      window.close();
+      if (event.type == sf::Event::Closed) window.close();
     }
+
+    // Highest bar among all of them
+    highest = 0;
 
     // Copy Audio Data
     silence = 1;
-		for (i = 0; i < 2050; i++) {
-			if (i < 2048) {
-				in[i] = audio.audio_out[i];
-				if (in[i]) silence = 0;
-			} else {
-				in[i] = 0;
-			}
+    for (i = 0; i < 2050; i++) {
+      if (i < 2048) {
+        in[i] = audio.audio_out[i];
+        if (in[i]) silence = 0;
+      } else {
+        in[i] = 0;
+      }
     }
 
     // Check if there was silence
@@ -152,11 +168,11 @@ int main () {
       nanosleep(&req, NULL);
       continue;
     }
-    
+
     // real shit??
     fftw_execute(p);
 
-    for (i = 0; i < 42; i++) {
+    for (i = 0; i < 50; i++) {
       int ab = pow(pow(*out[i * 2][0], 2) + pow(*out[i * 2][1], 2), 0.5);
       ab = ab + (ab * i / 30);
       float bar = (float)ab / (float)3500000;
@@ -167,16 +183,22 @@ int main () {
         bars[i] -= 1 / fps;
       }
       if (bars[i] < 0) bars[i] = 0;
+      int high = static_cast<int>(bars[i] * kbmax + 0.5);
+      if (high > highest) highest = high;
     }
 
     // Render
     draw(&window);
     fps = 1 / clock.restart().asSeconds();
+    if (f && kbmax > 0) {
+      char const *hh = std::to_string(highest).c_str();
+      fputs(hh, f);
+    }
   }
 
   // Free resources
   audio.terminate = 1;
-	pthread_join(p_thread, NULL);
+  pthread_join(p_thread, NULL);
   free(audio.source);
 
   return 0;
