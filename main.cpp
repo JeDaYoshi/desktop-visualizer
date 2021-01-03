@@ -95,7 +95,7 @@ int main () {
 
   sf::Clock clock;
   pthread_t p_thread;
-  int i, thr_id, silence, sleep, highest, kbmax;
+  int i, thr_id, silence, sleep, highest, last, kbmax;
   struct timespec req = { .tv_sec = 0, .tv_nsec = 0 };
   struct audio_data audio;
   double in[2050];
@@ -189,11 +189,12 @@ int main () {
 
     // Render
     draw(&window);
-    fps = 1 / clock.restart().asSeconds();
-    if (f && kbmax > 0) {
+    if (f && kbmax > 0 && highest != last) {
       char const *hh = std::to_string(highest).c_str();
       fputs(hh, f);
     }
+    last = highest;
+    fps = 1 / clock.restart().asSeconds();
   }
 
   // Free resources

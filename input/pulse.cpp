@@ -87,7 +87,7 @@ void getPulseDefaultSink(void* data) {
                         pulseaudio_context_state_callback,
                         (void*)audio);
 
-  //starting with one nonblokng iteration in case pulseaudio is not able to run
+  // starting with one nonblokng iteration in case pulseaudio is not able to run
   if (!(ret = pa_mainloop_iterate(m_pulseaudio_mainloop, 0, &ret))) {
     printf("Could not open pulseaudio mainloop to find default device name: %d\n"
            "check if pulseaudio is running\n", ret);
